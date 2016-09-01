@@ -264,36 +264,38 @@ def getPlayerListForName(player_name):
 
     results = cursor.fetchall()
     conn.close
+    print results
 
     i = 1
     for item in results:
-        choice_list.append([i,results[0],results[1],results[2]])
+        choice_list.append([i,results[i-1][0],results[i-1][1],results[i-1][2]])
         i += 1
 
+    print choice_list
     return choice_list
 
 def getPlayerIdDisplay(choice_list):
     approved_answers = ['cancel']
     user_prompt = "Please select from one of the below choices:\n\n"
-    user_prompt = "    Name........................Date Entered\n\n"
+    user_prompt = "          Name......................Date Entered\n\n"
     for player in choice_list:
-        user_prompt += "   " + str(choice_list[0]) + ")   " + choice_list[1]
-        user_prompt += "." * (40 - len(choice_list[1]) - len(choice_list[2]))
-        user_prompt += choice_list[1] + "\n\n"
-        approved_answers.append(choice_list[0])
+        date = player[2].strftime('%c')
+        user_prompt += "   " + str(player[0]) + ")   " + str(player[1])
+        user_prompt += "." * (40 - len(player[1]) - len(date))
+        user_prompt += date + "\n\n"
+        approved_answers.append(player[0])
     print user_prompt
 
     answer = ""
     while answer not in approved_answers:
         answer = raw_input("Which of the above players is the correct person?")
-        if answer.isdigit():
+        if answer.lower == 'cancel':
+            return None
+        elif answer.isdigit():
             # Is numberic, so convert this over to int
-            answer = int(result)
+            answer = int(answer)
     
-    if answer.lower == 'cancel':
-        return None
-    else:
-        return choice_list[answer-1][3]
+    return choice_list[answer-1][3]
 
 def addPlayer(player_name):
     """Adds a player to the tournament database and returns the new player_id.
