@@ -46,6 +46,13 @@ def getTournamentId():
     return current_tournament
 
 def newTournament(tournament_desc=None, tournament_date=None):
+    """Abstracted layer - runs logic for creating tournaments; receives two optional parameters
+
+    Args:
+      tournament_desc: Optional entry, describing tournament (e.g. 'Soccer Match 9/1/2016')
+      tournament_date:  Optional entry, date the tournament will occur - defaults to system date; used in description if empty
+    """
+
     if tournament_date is None:
         tournament_date = time.strftime("%m/%d/%Y")
 
@@ -56,6 +63,14 @@ def newTournament(tournament_desc=None, tournament_date=None):
     return result
 
 def addTournament(tournament_desc, tournament_date):
+    """Creates a new tournament; receives two optional parameters
+
+    Args:
+        tournament_desc: Optional entry, describing tournament (e.g. 'Soccer Match 9/1/2016')
+        tournament_date:  Optional entry, date the tournament will occur - defaults to system date; used in description if empty
+    Returns:
+        tournament_id:  tournament_id of the newly created tournament; allowed easier debugging
+    """
 
     conn = connect()
     cursor = conn.cursor()
@@ -75,7 +90,7 @@ def addTournament(tournament_desc, tournament_date):
     return results[0]
 
 def registerPlayer(tournament_id, player_name):
-    """Abstracted layer - runs logic for user registration.
+    """Abstracted layer - runs logic for user registration with UI interaction
 
     If player_name is not found, user is prompted (y,N) if user should be added.
     If player name is found, user is prompted if returning player or to create new player.
@@ -104,19 +119,26 @@ def registerPlayer(tournament_id, player_name):
         print "\n\n" + player_name + " was not registered, per user input."
 
 def existsTournamentId(tournament_id):
+    """Simple failsafe to prevent attempted registration into a nonexistant tournament
+
+    Args:
+        tournament_id: tournament_id, for validation if present in tournaments table
+    Returns:
+        True/False: True if present; else False
+    """
     conn = connect()
     cursor = conn.cursor()
 
     cursor.execute(
         """
-            SELECT count(*) as count 
+            SELECT COUNT(*) as count 
             FROM tournaments
             WHERE tournament_id = (%s)
         """,(tournament_id,))
 
     results = cursor.fetchone()
-    results = results[0]
     conn.close
+        results = results[0]
 
     if results == 0:
         return False
@@ -124,6 +146,13 @@ def existsTournamentId(tournament_id):
         return True
 
 def isAcceptingRegistrants(tournament_id):
+    """Returns False if registration is closed (rounds and matches have started)
+
+    Args:
+        tournament_id: tournament_id, used to determine if rounds have been created (a sure sign that teh tournament has begun)
+    Returns:
+        True/False: True if no rounds found for tournament_id; else False
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -148,7 +177,9 @@ def existsPlayerName(player_name):
     Used for preliminary validations; player_id is checked elsewhere.
 
     Args:
-      name: the player's full name (need not be unique).
+        name: the player's full name (need not be unique).
+    Returns:
+        True/False: If the name is in the list return True, else False
     """
 
     conn = connect()
@@ -171,12 +202,15 @@ def existsPlayerName(player_name):
         return True
 
 def isPlayerRegistered(tournament_id, player_id):
-    """Returns True if player_name is found in players table.
+    """Returns True if player_id is registered in tournament
 
-    Used for preliminary validations; player_id is checked elsewhere.
+    Used in validations to prevent an attempt to re-register - allows appropriate text prompt to user.
 
     Args:
-      name: the player's full name (need not be unique).
+        tournament_id: used as one part of the primary key to the tournament_registrants table
+        player_id: second part of primary key to the tournament_registrants table
+    Returns:
+        True/False: if player is registered return True; else False
     """
 
     conn = connect()
@@ -200,12 +234,14 @@ def isPlayerRegistered(tournament_id, player_id):
         return True
 
 def newPlayerConfirmation(player_name):
-    """Asks user if player is a returming player. Returns player_id.
+    """Abstracted layer, runs the logic of adding players.
 
-    We should only see this logic used if the player_name already exists in database!
+    Can be triggered independently; also used as part of registerPlayer logic.
 
     Args:
         player_name: the player's full name (need not be unique).
+    Returns:
+        player_id or None; None if no player_id was created; else player_id
     """
     answer_list = ['y','N','cancel']
     add_player = ""
@@ -224,7 +260,8 @@ def newPlayerConfirmation(player_name):
 def existingPlayerNameDeconflict(player_name):
     """Asks user if player is a returming player. Returns player_id.
 
-    We should only see this logic used if the player_name already exists in database!
+    Logic is only used if the player_name already exists in database!
+    getPlayerIdUserSelection runs a user prompt with player list and returns the player_id
 
     Args:
         player_name: the player's full name (need not be unique).
@@ -239,15 +276,34 @@ def existingPlayerNameDeconflict(player_name):
     if returning_player.lower() == 'cancel':
         return None
     elif returning_player == 'N':
+        print player_name + " was added!"
         return addPlayer(player_name)
     else:
         return getPlayerIdUserSelection(player_name)
 
 def getPlayerIdUserSelection(player_name):
+    """Runs a user prompt with player list and returns the player_id, based on user entry
+
+    Part of the logic to resolve multiple users with same name.
+
+    Args:
+        player_name: the player's full name (need not be unique).
+    Returns:
+        player_id: after user prompt and response to select correct user.
+    """
     choice_list = getPlayerListForName(player_name)
     return getPlayerIdDisplay(choice_list)
 
 def getPlayerListForName(player_name):
+    """Returns a list of players with the same name - date/time created is used to distinguish
+
+    Part of the logic to resolve multiple users with same name.
+
+    Args:
+        player_name: the player's full name (need not be unique).
+    Returns:
+        clhoice_list: list of lists - each entry has all the components to build a user prompt (selection number, name, date/time created, player_id (kept hidden))
+    """
     choice_list = []
 
     conn = connect()
@@ -264,17 +320,24 @@ def getPlayerListForName(player_name):
 
     results = cursor.fetchall()
     conn.close
-    print results
 
     i = 1
     for item in results:
         choice_list.append([i,results[i-1][0],results[i-1][1],results[i-1][2]])
         i += 1
 
-    print choice_list
     return choice_list
 
 def getPlayerIdDisplay(choice_list):
+    """Returns player_id after user selection or None if they cancel
+
+    Part of the logic to resolve multiple users with same name.
+
+    Args:
+        choice_list: list of lists - each entry has all the components to build a user prompt (selection number, name, date/time created, player_id (kept hidden))
+    Returns:
+        player_id or None: after user selection, player_id is returned; if they cancel None is returned. 
+    """
     approved_answers = ['cancel']
     user_prompt = "Please select from one of the below choices:\n\n"
     user_prompt = "          Name......................Date Entered\n\n"
@@ -289,7 +352,7 @@ def getPlayerIdDisplay(choice_list):
     answer = ""
     while answer not in approved_answers:
         answer = raw_input("Which of the above players is the correct person?")
-        if answer.lower == 'cancel':
+        if answer.lower == 'cancel':        # Needs to be here, otherwise code will .lower an integer which is not allowed
             return None
         elif answer.isdigit():
             # Is numberic, so convert this over to int
@@ -304,7 +367,9 @@ def addPlayer(player_name):
     should be handled by your SQL database schema, not in your Python code.)
 
     Args:
-      name: the player's full name (need not be unique).
+        player_name: the player's full name (need not be unique).
+    Returns:
+        player_id: the player_id of the newly created player; used in subsequent logic
     """
 
     conn = connect()
@@ -345,6 +410,11 @@ def addTournamentRegistrant(tournament_id, player_id):
     conn.close
 
 def newRound(tournament_id):
+    """Abstracted layer - runs logic for creating a new round in the tournament
+
+    Args:
+        tournament_id: rounds will be created for this tournament
+    """
     if not isLastRoundComplete(tournament_id):
         print "The previous round is not complete."
         print "Please finish entering all the results."
@@ -358,6 +428,15 @@ def newRound(tournament_id):
     newMatchAssignments(tournament_id, new_round_id)
 
 def isLastRoundComplete(tournament_id):
+    """Returns True/False based on if all previous matches are complete
+
+    Required in order to rank players for best-match competitions
+
+    Args:
+        tournament_id: tournament_id value from tournaments table (primary key)
+    Returns:
+        True/False: if tournament has no rounds with incomplete matches, return True, else False
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -378,6 +457,15 @@ def isLastRoundComplete(tournament_id):
         return False
 
 def isRoundNeeded(tournament_id):
+    """Returns True/False if more rounds are needed
+
+    Quantifies rounds created and compares to the number of registrants; powers of 2
+
+    Args:
+        tournament_id: tournament_id used to 
+    Returns:
+        True/False: True if number of rounds is below threshold for total matches; else False
+    """
     round_count = getRoundCount(tournament_id)
     registrant_count = getRegistrantCount(tournament_id)
     if 2 ** round_count < registrant_count:
@@ -439,7 +527,9 @@ def addNextRound(tournament_id):
     """Adds a new round to the tournament and returns the new round_id.
 
     Args:
-      tournament_id: the tournament user is currently managing.
+        tournament_id: the tournament user is currently managing.
+    Returns:
+        round_id: newly created round_id is returned; used in subsequent logic
     """
     round_number = getRoundCount(tournament_id) + 1
     round_desc = "Round " + str(round_number)
@@ -462,6 +552,14 @@ def addNextRound(tournament_id):
     return results[0]
 
 def newMatchesForRound(tournament_id, round_id):
+    """Abstracted layer, runs logic for adding matches to the round.
+
+    Args:
+        tournament_id: tournament_id value from tournaments table (primary key)
+        round_id: matches are created within this round_id
+    Returns:
+        User output confirming the creation of the round, and matchs, with a count
+    """
     match_id = 0
     while match_id * 2 < getRegistrantCount(tournament_id):
         addMatch(round_id, "Match " + str(match_id + 1))
@@ -472,6 +570,12 @@ def newMatchesForRound(tournament_id, round_id):
         print "Round " + str(round_id) + " created with " + str(match_id) + " matches."
 
 def addMatch(round_id, match_desc):
+    """Adds a match to the matches table
+
+    Args:
+        round_id: matches are created within this round_id
+        match_desc: description for the human readable in matches table
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -487,6 +591,16 @@ def addMatch(round_id, match_desc):
     conn.close
 
 def newMatchAssignments(tournament_id, round_id):
+    """Abstracted layer for logic to create player assignments.
+
+    Loops through created matches
+        gets best, unassigned player
+        gets best player based on score - has not played player previously
+
+    Args:
+        tournament_id: tournament_id value from tournaments table (primary key)
+        round_id: all matches are created within this round_id
+    """
     match_list = getMatchList(tournament_id, round_id)
     for match in match_list:
         player1 = getUnassignedPlayer(tournament_id, round_id)
@@ -504,6 +618,14 @@ def newMatchAssignments(tournament_id, round_id):
     return
 
 def getUnassignedPlayer(tournament_id, round_id):
+    """Returns top ranked, player not yet assigned to a match in this round.
+
+    Args:
+        tournament_id: tournament_id value from tournaments table (primary key)
+        round_id: all matches and assignments are created within this round_id
+    Returns:
+        player_id: top ranked player - ranked by score, then wins (when byes occur score > wins)
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -524,6 +646,14 @@ def getUnassignedPlayer(tournament_id, round_id):
     return results
 
 def getUnmatchedPlayer(tournament_id, player_id):
+    """Returns top ranked, player not yet assigned AND that hasn't played player_id in this tournament
+
+    Args:
+        tournament_id: tournament_id value from tournaments table (primary key)
+        player_id: used to eliminate players that have previously competed in tournament_id
+    Returns:
+        player_id: best-match player - ranked by score, then wins (when byes occur: score > wins)
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -544,6 +674,14 @@ def getUnmatchedPlayer(tournament_id, player_id):
     return results
 
 def addMatchAssigments(match_id, player_id, match_role_id, match_result_id=None):
+    """Adds match assignments to the match_assignments table
+
+    Args:
+        match_id: players will be assigned to this match
+        player_id: player who is in this match
+        match_role_id: moves first, second or bye
+        match_result_id: Optional, only value passed in is 'B' for Bye. No need to wait for results of game - enter result.
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -560,6 +698,14 @@ def addMatchAssigments(match_id, player_id, match_role_id, match_result_id=None)
     return
 
 def getMatchList(tournament_id, round_id):
+    """Returns list of all matches created for round_id, with flag for high_score_moves_first (T/F)
+
+    Args:
+        tournament_id: all matches occur within this tournament
+        round_id: all matches and assignments are created within this round_id
+    Returns:
+        match_list: full list of matches, with flag for high_score_moves_first (T/F)
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -575,12 +721,20 @@ def getMatchList(tournament_id, round_id):
         ORDER BY trml.match_id
     """,(tournament_id, round_id,))
 
-    results = cursor.fetchall()
+    match_list = cursor.fetchall()
     conn.close
 
-    return results
+    return match_list
 
 def newMatchResults(match_id, winner, loser, draw=False):
+    """Abstracted layer - runs logic for writing game results to match_assgnments table
+
+    Args:
+        match_id: id for the game being reported
+        winner: player who won; if draw, order will not matter
+        loser: player who lost; if draw, order will not matter
+        draw: Optional, only returned if a draw; allows logic to handle ties/stalemates
+    """
     if not draw:
         addMatchResults(match_id, winner, "W")
         addMatchResults(match_id, loser, "L")
@@ -589,6 +743,13 @@ def newMatchResults(match_id, winner, loser, draw=False):
         addMatchResults(match_id, loser, "D")
 
 def addMatchResults(match_id, player_id, match_result_id):
+    """Writes the results to the match_assignments table
+
+    Args:
+        match_id: match with results to report
+        player_id: player whose results are being written
+        match_result_id: can be win, loss, bye or draw
+    """
     conn = connect()
     cursor = conn.cursor()
 
@@ -607,20 +768,29 @@ def addMatchResults(match_id, player_id, match_result_id):
 
 def deleteMatches():
     """Remove all the match records from the database."""
+    addTournament()
 
 def deletePlayers():
     """Remove all the player records from the database."""
 
-def countPlayers():
-    """Returns the number of players currently registered."""
+
+    addTournament()
+
+def countPlayers(tournament_id):
+    """Returns the number of players currently registered to the tournament.
+
+    Needed to change in order to accommodate the test script.
+
+    Tournaments can stack, so player count isn't /required/ to be equal to people registered"""
     conn = connect()
     cursor = conn.cursor()
 
     cursor.execute(
         """
             SELECT COUNT(*) AS count 
-            FROM players
-        """)
+            FROM tournament_registrants tr
+            WHERE tr.tournament_id = %s
+        """,(tournament_id,))
 
     results = cursor.fetchone()
     results = int(results[0])
