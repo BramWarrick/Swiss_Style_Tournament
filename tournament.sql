@@ -238,3 +238,31 @@ CREATE OR REPLACE VIEW tournament_player_unmatched AS
 	, ts.player_wins DESC 	-- This sort allows Byes to float to the top, score>wins, lower frequency of repeat Byes
 	, tmc.candidate
 	;
+
+CREATE OR REPLACE VIEW swiss_standings AS
+	SELECT trml.tournament_id
+	, trml.round_id
+	, m.match_id
+	, m.match_desc
+	, ma1.player_id player1
+	, p1.player_name player1_name
+	, ma2.player_id player2
+	, COALESCE(ma2.player_name,'Bye for round') player2_name
+	FROM tournament_round_match_list trml 
+	, matches m
+	LEFT OUTER JOIN (
+		SELECT ma.match_id
+		, p.player_id
+		, p.player_name
+		FROM match_assignments ma
+		, players p
+		WHERE ma.player_id = p.player_id
+		AND ma.match_role_id = 'S'
+		) ma2	ON (m.match_id = ma2.match_id)
+	, match_assignments ma1
+	, players p1
+	WHERE trml.match_id = m.match_id
+	AND m.match_id = ma1.match_id
+	AND ma1.player_id = p1.player_id
+	AND ma1.match_role_id IN ('F','B')
+	; 
