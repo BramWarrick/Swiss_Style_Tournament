@@ -15,32 +15,32 @@ def testCount():
              player count after players deleted.
     """
     deleteMatches()
-    deletePlayers()
-    c = countPlayers()
+    deletePlayers(getTournamentId())
+    c = countPlayers(getTournamentId())
     if c == '0':
         raise TypeError(
             "countPlayers should return numeric zero, not string '0'.")
     if c != 0:
         raise ValueError("After deletion, countPlayers should return zero.")
-    print "1. countPlayers() returns 0 after initial deletePlayers() execution."
-    registerPlayer("Chandra Nalaar")
-    c = countPlayers()
+    print "1. countPlayers(getTournamentId()) returns 0 after initial deletePlayers(getTournamentId()) execution."
+    registerPlayer(getTournamentId(),"Chandra Nalaar")
+    c = countPlayers(getTournamentId())
     if c != 1:
         raise ValueError(
-            "After one player registers, countPlayers() should be 1. Got {c}".format(c=c))
-    print "2. countPlayers() returns 1 after one player is registered."
-    registerPlayer("Jace Beleren")
-    c = countPlayers()
+            "After one player registers, countPlayers(getTournamentId()) should be 1. Got {c}".format(c=c))
+    print "2. countPlayers(getTournamentId()) returns 1 after one player is registered."
+    registerPlayer(getTournamentId(),"Jace Beleren")
+    c = countPlayers(getTournamentId())
     if c != 2:
         raise ValueError(
-            "After two players register, countPlayers() should be 2. Got {c}".format(c=c))
-    print "3. countPlayers() returns 2 after two players are registered."
-    deletePlayers()
-    c = countPlayers()
+            "After two players register, countPlayers(getTournamentId()) should be 2. Got {c}".format(c=c))
+    print "3. countPlayers(getTournamentId()) returns 2 after two players are registered."
+    deletePlayers(getTournamentId())
+    c = countPlayers(getTournamentId())
     if c != 0:
         raise ValueError(
             "After deletion, countPlayers should return zero.")
-    print "4. countPlayers() returns zero after registered players are deleted.\n5. Player records successfully deleted."
+    print "4. countPlayers(getTournamentId()) returns zero after registered players are deleted.\n5. Player records successfully deleted."
 
 def testStandingsBeforeMatches():
     """
@@ -48,9 +48,9 @@ def testStandingsBeforeMatches():
     to any matches being reported.
     """
     deleteMatches()
-    deletePlayers()
-    registerPlayer("Melpomene Murray")
-    registerPlayer("Randy Schwartz")
+    deletePlayers(getTournamentId())
+    registerPlayer(getTournamentId(),"Melpomene Murray")
+    registerPlayer(getTournamentId(),"Randy Schwartz")
     standings = playerStandings()
     if len(standings) < 2:
         raise ValueError("Players should appear in playerStandings even before "
@@ -74,11 +74,11 @@ def testReportMatches():
     Test to confirm matches are deleted properly.
     """
     deleteMatches()
-    deletePlayers()
-    registerPlayer("Bruno Walton")
-    registerPlayer("Boots O'Neal")
-    registerPlayer("Cathy Burton")
-    registerPlayer("Diane Grant")
+    deletePlayers(getTournamentId())
+    registerPlayer(getTournamentId(),"Bruno Walton")
+    registerPlayer(getTournamentId(),"Boots O'Neal")
+    registerPlayer(getTournamentId(),"Cathy Burton")
+    registerPlayer(getTournamentId(),"Diane Grant")
     standings = playerStandings()
     [id1, id2, id3, id4] = [row[0] for row in standings]
     reportMatch(id1, id2)
@@ -108,15 +108,15 @@ def testPairings():
     Test that pairings are generated properly both before and after match reporting.
     """
     deleteMatches()
-    deletePlayers()
-    registerPlayer("Twilight Sparkle")
-    registerPlayer("Fluttershy")
-    registerPlayer("Applejack")
-    registerPlayer("Pinkie Pie")
-    registerPlayer("Rarity")
-    registerPlayer("Rainbow Dash")
-    registerPlayer("Princess Celestia")
-    registerPlayer("Princess Luna")
+    deletePlayers(getTournamentId())
+    registerPlayer(getTournamentId(),"Twilight Sparkle")
+    registerPlayer(getTournamentId(),"Fluttershy")
+    registerPlayer(getTournamentId(),"Applejack")
+    registerPlayer(getTournamentId(),"Pinkie Pie")
+    registerPlayer(getTournamentId(),"Rarity")
+    registerPlayer(getTournamentId(),"Rainbow Dash")
+    registerPlayer(getTournamentId(),"Princess Celestia")
+    registerPlayer(getTournamentId(),"Princess Luna")
     standings = playerStandings()
     [id1, id2, id3, id4, id5, id6, id7, id8] = [row[0] for row in standings]
     pairings = swissPairings()
