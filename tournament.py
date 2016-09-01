@@ -98,6 +98,8 @@ def registerPlayer(tournament_id, player_name):
     Args:
         tournament_id: tournament_id value from tournaments table.
         player_name: the player's full name (need not be unique).
+    Returns:
+        Exception type messaging
     """
 
     if not existsTournamentId(tournament_id):
@@ -111,12 +113,11 @@ def registerPlayer(tournament_id, player_name):
     else:
         player_id = existingPlayerNameDeconflict(player_name)
         if isPlayerRegistered(tournament_id, player_id):
-            print player_name + " is already registered for this tournament."
-            return
+            return player_name + " is already registered for this tournament."
     if player_id != None:
         addTournamentRegistrant(tournament_id, player_id)
     else:
-        print "\n\n" + player_name + " was not registered, per user input."
+        return "\n\n" + player_name + " was not registered, per user input."
 
 def existsTournamentId(tournament_id):
     """Simple failsafe to prevent attempted registration into a nonexistant tournament
@@ -234,7 +235,7 @@ def isPlayerRegistered(tournament_id, player_id):
         return True
 
 def newPlayerConfirmation(player_name):
-    """Abstracted layer, runs the logic of adding players.
+    """Abstracted layer, runs the logic of adding players. - Needed for testing, would be front end normally
 
     Can be triggered independently; also used as part of registerPlayer logic.
 
@@ -259,6 +260,7 @@ def newPlayerConfirmation(player_name):
 
 def existingPlayerNameDeconflict(player_name):
     """Asks user if player is a returming player. Returns player_id.
+    Handles some exceptins would normally be front end-back end conversation
 
     Logic is only used if the player_name already exists in database!
     getPlayerIdUserSelection runs a user prompt with player list and returns the player_id
@@ -330,6 +332,7 @@ def getPlayerListForName(player_name):
 
 def getPlayerIdDisplay(choice_list):
     """Returns player_id after user selection or None if they cancel
+    Needed for testing - would normally be front end that handles UI, I'd just pass in the list
 
     Part of the logic to resolve multiple users with same name.
 
@@ -416,12 +419,8 @@ def newRound(tournament_id):
         tournament_id: rounds will be created for this tournament
     """
     if not isLastRoundComplete(tournament_id):
-        print "The previous round is not complete."
-        print "Please finish entering all the results."
         return
     if not isRoundNeeded:
-        print "Tournament complete!"
-        # print "The results are:"
         return
     new_round_id = addNextRound(tournament_id)
     newMatchesForRound(tournament_id, new_round_id)
@@ -558,16 +557,13 @@ def newMatchesForRound(tournament_id, round_id):
         tournament_id: tournament_id value from tournaments table (primary key)
         round_id: matches are created within this round_id
     Returns:
-        User output confirming the creation of the round, and matchs, with a count
+        number of matches created
     """
     match_id = 0
     while match_id * 2 < getRegistrantCount(tournament_id):
         addMatch(round_id, "Match " + str(match_id + 1))
         match_id += 1
-    if match_id == 1:
-        print "Round " + str(round_id) + " created with " + str(match_id) + " match."
-    else:
-        print "Round " + str(round_id) + " created with " + str(match_id) + " matches."
+    return match_id
 
 def addMatch(round_id, match_desc):
     """Adds a match to the matches table
@@ -811,6 +807,11 @@ def playerStandings(tournament_id):
         wins: the number of matches the player has won
         matches: the number of matches the player has played
     """
+    
+    #tournament_test.py assumes matches are created automatically, rather than 
+    if getRoundCount(tournament_id) = 0
+        newRound(tournament_id)
+
     conn = connect()
     cursor = conn.cursor()
 
@@ -834,13 +835,16 @@ def playerStandings(tournament_id):
 
     return results
 
-def reportMatch(winner, loser):
+def reportMatch(tournament_id, winner, loser):
     """Records the outcome of a single match between two players.
 
     Args:
-      winner:  the id number of the player who won
-      loser:  the id number of the player who lost
+        tournament_id: tournament currently running
+        winner:  the id number of the player who won
+        loser:  the id number of the player who lost
     """
+
+    # Add logic to find match, within tournament_id where both players compete
     newMatchResults(match_id, winner, loser)
 
 def swissPairings():
