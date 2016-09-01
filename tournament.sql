@@ -88,6 +88,8 @@ INSERT INTO match_roles (match_role_id, match_role) VALUES ('S','Second');
 INSERT INTO match_roles (match_role_id, match_role) VALUES ('B','Bye');
 
 -- CREATE VIEWS
+
+-- Create a view linking tournaments-rounds-matches since the normal form made that a bit of work
 CREATE OR REPLACE VIEW tournament_round_match_list AS
 	SELECT r.tournament_id
 	, r.round_id
@@ -99,6 +101,23 @@ CREATE OR REPLACE VIEW tournament_round_match_list AS
 	WHERE m.round_id = r.round_id
 	;
 
+-- Create a view bringing together match information, joined appropriately for match results
+CREATE OR REPLACE VIEW match_result_details AS
+	SELECT trml.tournament_id
+	, trml.round_id
+	, ma.match_id
+	, ma.player_id
+	, ma.match_role_id
+	, ma.match_result_id
+	, COALESCE(mrt.match_result_desc, 'Unfinished')
+	, COALESCE(mrt.match_result_modifier, 0) match_result_modifier
+	FROM match_assignments ma
+		LEFT OUTER JOIN match_result_types mrt ON (ma.match_result_id = mrt.match_result_id)
+	, tournament_round_match_list trml
+	WHERE ma.match_id = trml.match_id
+	;
+
+-- Create a view that shows tournament/rounds where the match is still open (needs more results)
 CREATE OR REPLACE VIEW rounds_incomplete AS
 	SELECT trml.tournament_id 
 	, trml.round_id
@@ -110,6 +129,7 @@ CREATE OR REPLACE VIEW rounds_incomplete AS
 	, trml.round_id
 	;
 
+-- Create a view, returns all tournament/rounds that aren't in the rounds_incomplete view; therefore complete
 CREATE OR REPLACE VIEW rounds_complete AS 
 	SELECT r.tournament_id
 	, m.round_id
@@ -123,23 +143,29 @@ CREATE OR REPLACE VIEW rounds_complete AS
 	, m.round_id
 	;
 
+-- Create a view, returns score for all tournaments in database where the match has been created
 CREATE OR REPLACE VIEW tournament_score AS
-	SELECT trml.tournament_id
-	, ma.player_id
-	, COALESCE(SUM(mrt.match_result_modifier),0) score
-	, COALESCE(SUM(CASE WHEN ma.match_result_id = 'W' then 1 else 0 end),0) player_wins
-	, COALESCE(SUM(CASE WHEN ma.match_result_id IS NOT NULL then 1 else 0 end),0) matches_played
-	FROM match_assignments ma
-	, match_result_types mrt
-	, tournament_round_match_list trml
-	WHERE ma.match_id = trml.match_id
-	AND ma.match_result_id = mrt.match_result_id
-	GROUP BY trml.tournament_id
-	, ma.player_id
-	ORDER BY trml.tournament_id
-	, SUM(mrt.match_result_modifier) DESC
+	SELECT tr.tournament_id
+	, tr.player_id
+	, p.player_name
+	, COALESCE(SUM(mrd.match_result_modifier),0) score
+	, COALESCE(SUM(CASE WHEN mrd.match_result_id = 'W' then 1 else 0 end),0) player_wins
+	, COALESCE(SUM(CASE WHEN mrd.match_result_id IS NOT NULL then 1 else 0 end),0) matches_played
+	FROM tournament_registrants tr
+		LEFT OUTER JOIN match_result_details mrd ON (tr.player_id = mrd.player_id AND tr.tournament_id = mrd.tournament_id)
+	, players p
+	WHERE tr.player_id = p.player_id
+	GROUP BY tr.tournament_id
+	, tr.player_id
+	, p.player_id
+	ORDER BY tr.tournament_id
+	, COALESCE(SUM(mrd.match_result_modifier),0) DESC
+	, COALESCE(SUM(CASE WHEN mrd.match_result_id = 'W' then 1 else 0 end),0) DESC
+	, COALESCE(SUM(CASE WHEN mrd.match_result_id IS NOT NULL then 1 else 0 end),0) DESC
+	, tr.player_id
 	;
 
+-- Create a view, all players in a round that have not been assigned to a match
 CREATE OR REPLACE VIEW tournament_round_players_assigned AS
 	SELECT trml.round_id
 	, tr.player_id
@@ -150,6 +176,7 @@ CREATE OR REPLACE VIEW tournament_round_players_assigned AS
 	AND trml.match_id = ma.match_id
 	;
 
+-- Create a view, returns all players in the tournament, that have not been assigned to a round/match
 CREATE OR REPLACE VIEW tournament_round_players_unassigned AS
 	SELECT trml.tournament_id
 	, trml.round_id
@@ -163,10 +190,12 @@ CREATE OR REPLACE VIEW tournament_round_players_unassigned AS
 	AND trpa.player_id IS NULL
 	ORDER BY trml.tournament_id
 	, trml.round_id
-	, ts.score DESC
-	, tr.player_id
+	, ts.score DESC 				-- This sort allows Byes to float to the top, score>wins, lower frequency of repeat Byes
+	, ts.player_wins DESC 	-- This sort allows Byes to float to the top, score>wins, lower frequency of repeat Byes
+	, tr.player_id 					-- Tie breaker
 	;
 
+-- Create a view, returns all players registered for tournament that can be paired with player_id
 CREATE OR REPLACE VIEW tournament_match_candidate AS
 	SELECT tr.tournament_id 
 	, tr.player_id
@@ -177,6 +206,7 @@ CREATE OR REPLACE VIEW tournament_match_candidate AS
 	AND tr.player_id <> tr2.player_id
 	;
 
+-- Create a view, returns all players that played player_id previously in THIS tournament
 CREATE OR REPLACE VIEW tournament_player_matched AS
 	SELECT trml.tournament_id
 	, p1.player_id
@@ -188,21 +218,23 @@ CREATE OR REPLACE VIEW tournament_player_matched AS
 	AND trml.match_id = p2.match_id
 	;
 
-	CREATE OR REPLACE VIEW tournament_player_unmatched AS
-		SELECT tmc.tournament_id
-		, tmc.player_id
-		, tmc.candidate candidate_unmatched
-		, ts.score candidate_score
-		FROM tournament_match_candidate tmc
-			LEFT OUTER JOIN tournament_player_matched tpm
-				ON (tmc.tournament_id = tpm.tournament_id
-					AND tmc.player_id = tpm.player_id
-					AND tmc.candidate = tpm.played_previously)
-			LEFT OUTER JOIN tournament_score ts
-				ON (tmc.tournament_id = ts.tournament_id
-					AND tmc.candidate = ts.player_id)
-		AND tpm.played_previously IS NULL
-		ORDER BY tmc.tournament_id
-		, ts.score DESC
-		, tmc.candidate
-		;
+-- Create a view, list all players from candidates that have not previously played; therefore best, unmatched player; ranked by score, wins
+CREATE OR REPLACE VIEW tournament_player_unmatched AS
+	SELECT tmc.tournament_id
+	, tmc.player_id
+	, tmc.candidate candidate_unmatched
+	, ts.score candidate_score
+	FROM tournament_match_candidate tmc
+		LEFT OUTER JOIN tournament_player_matched tpm
+			ON (tmc.tournament_id = tpm.tournament_id
+				AND tmc.player_id = tpm.player_id
+				AND tmc.candidate = tpm.played_previously)
+		LEFT OUTER JOIN tournament_score ts
+			ON (tmc.tournament_id = ts.tournament_id
+				AND tmc.candidate = ts.player_id)
+	AND tpm.played_previously IS NULL
+	ORDER BY tmc.tournament_id
+	, ts.score DESC 				-- This sort allows Byes to float to the top, score>wins, lower frequency of repeat Byes
+	, ts.player_wins DESC 	-- This sort allows Byes to float to the top, score>wins, lower frequency of repeat Byes
+	, tmc.candidate
+	;
