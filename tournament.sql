@@ -239,7 +239,7 @@ CREATE OR REPLACE VIEW tournament_player_unmatched AS
 	, tmc.candidate
 	;
 
-CREATE OR REPLACE VIEW swiss_standings AS
+CREATE OR REPLACE VIEW swiss_pairings AS
 	SELECT trml.tournament_id
 	, trml.round_id
 	, m.match_id
