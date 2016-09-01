@@ -18,15 +18,14 @@ def connect():
     conn = psycopg2.connect(database="tournament")
     return conn
 
-def userPrompt():
-    # User prompt
+def newAllTheThings():
     # Create tournament
     # Accept registrants
     # Create tournament round - closing tournament registration
     # Enter results
     # Create next round (until total needed is met)
-    # Display results
-    return "I'm a stub"
+    # return results
+    return "I'm a thought"
 
 def getTournamentId():
     """Created to modify the test sceanrios - allowing a tournament_id to be passed in"""
@@ -44,6 +43,23 @@ def getTournamentId():
     current_tournament = int(results[0])
 
     return current_tournament
+
+def getRoundId(tournament_id):
+    conn = connect()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+            SELECT MAX(trml.round_id) as round_id 
+            FROM tournament_round_match_list trml
+            WHERE trml.tournament_id = (%s)
+        """,(tournament_id,))
+
+    recent_round = cursor.fetchone()
+    conn.close
+    recent_round = int(recent_round[0])
+
+    return recent_round
 
 def newTournament(tournament_desc=None, tournament_date=None):
     """Abstracted layer - runs logic for creating tournaments; receives two optional parameters
@@ -139,7 +155,7 @@ def existsTournamentId(tournament_id):
 
     results = cursor.fetchone()
     conn.close
-        results = results[0]
+    results = results[0]
 
     if results == 0:
         return False
@@ -764,13 +780,36 @@ def addMatchResults(match_id, player_id, match_result_id):
 
 def deleteMatches():
     """Remove all the match records from the database."""
+
+    # Normal DELETES would look like the commented area below
+    # conn = connect()
+    # cursor = conn.cursor()
+
+    # cursor.execute(
+    #     """
+    #         DELETE FROM match_assignments CASCADE;
+    #     """)
+
+    # cursor.execute(
+    #     """
+    #         DELETE FROM matches CASCADE;
+    #     """)
+
+    # conn.close
+
     addTournament()
 
 def deletePlayers():
-    """Remove all the player records from the database."""
+    """Returns the number of players registered in current tournament - forced change to accomodate 'Above and beyond
+    
+    True Delete statement included in comments
 
-
-    addTournament()
+    Args:
+        tournament_id: allows a check to ensure the tournament has no players (recently created by 'deleteMatches()')"""
+    
+    if countPlayers(tournament_id) > 0:
+        addTournament()
+    return
 
 def countPlayers(tournament_id):
     """Returns the number of players currently registered to the tournament.
@@ -787,6 +826,13 @@ def countPlayers(tournament_id):
             FROM tournament_registrants tr
             WHERE tr.tournament_id = %s
         """,(tournament_id,))
+
+    # Normal counting of players, below
+    # cursor.execute(
+    #     """
+    #         SELECT COUNT(*) AS count 
+    #         FROM players 
+    #     """)
 
     results = cursor.fetchone()
     results = int(results[0])
@@ -809,7 +855,7 @@ def playerStandings(tournament_id):
     """
     
     #tournament_test.py assumes matches are created automatically, rather than 
-    if getRoundCount(tournament_id) = 0
+    if getRoundCount(tournament_id) == 0:
         newRound(tournament_id)
 
     conn = connect()
@@ -817,19 +863,16 @@ def playerStandings(tournament_id):
 
     cursor.execute(
         """
-            SELECT p.player_id
-            , p.player_name
-            , ts.score
+            SELECT ts.player_id
+            , ts.player_name
             , ts.player_wins
             , ts.matches_played
             FROM tournament_score ts
-            , player p
-            WHERE ts.player_id = p.player_id
-            AND tournament_id = %s
-            ORDER BY ts.score DESC
+            WHERE ts.tournament_id = %s
+            ORDER BY ts.player_wins DESC
         """,(tournament_id,))
 
-    results = cursor.fetchone()
+    results = cursor.fetchall()
     results = int(results[0])
     conn.close
 
@@ -845,15 +888,41 @@ def reportMatch(tournament_id, winner, loser):
     """
 
     # Add logic to find match, within tournament_id where both players compete
+    conn = connect()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+            SELECT MAX(trml.match_id) as round_id 
+            FROM tournament_round_match_list trml
+            ,  (SELECT ma.match_id
+                FROM match_assignments ma
+                WHERE ma.player_id = (%s)
+                AND ma.match_result_id IS NULL) ma1
+            ,  (SELECT ma.match_id
+                FROM match_assignments ma
+                WHERE ma.player_id = (%s)
+                AND ma.match_result_id IS NULL) ma2
+            WHERE trml.tournament_id = (%s)
+            AND trml.match_id = ma1.match_id
+            AND trml.match_id = ma2.match_id
+        """,(winner, loser, tournament_id))
+
+    match_id = cursor.fetchone()
+    conn.close
+    match_id = int(match_id[0])
+
     newMatchResults(match_id, winner, loser)
 
-def swissPairings():
+def swissPairings(tournament_id, round_id):
     """Returns a list of pairs of players for the next round of a match.
 
     Assuming that there are an even number of players registered, each player
     appears exactly once in the pairings.  Each player is paired with another
     player with an equal or nearly-equal win record, that is, a player adjacent
     to him or her in the standings.
+
+    This logic handles Byes within the swiss_pairing view created by tournament.sql
 
     Returns:
       A list of tuples, each of which contains (id1, name1, id2, name2)
@@ -862,3 +931,21 @@ def swissPairings():
         id2: the second player's unique id
         name2: the second player's name
     """
+    conn = connect()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+            SELECT sp.player1
+            , sp.player1_name
+            , sp.player2
+            , sp.player2_name
+            FROM swiss_pairings sp
+            WHERE sp.tournament_id = (%s)
+            AND sp.round_id = (%s)
+        """,(winner, loser, tournament_id))
+
+    swiss_pairings = cursor.fetchall()
+    conn.close
+
+    return swiss_pairings
