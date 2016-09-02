@@ -7,12 +7,6 @@ import psycopg2
 import time
 import random
 
-try:
-    conn = psycopg2.connect(database="tournament") #, user="vagrant", host="localhost", port="8000")
-    # conn = psycopg2.connect("dbname=tournament port=8000")
-except:
-    print "I am unable to connect to the database"
-
 def connect():
     """Connect to the PostgreSQL database.  Returns a database connection."""
     conn = psycopg2.connect(database="tournament")
@@ -40,7 +34,7 @@ def getTournamentId():
 
     current_tournament = cursor.fetchone()
     conn.close
-    current_tournament = int(results[0])
+    current_tournament = int(current_tournament[0])
 
     return current_tournament
 
@@ -125,11 +119,15 @@ def registerPlayer(tournament_id, player_name):
         return "Tournament id " + str(tournament_id) + "is closed to registrants"
 
     if not existsPlayerName(player_name):
-        player_id = newPlayerConfirmation(player_name)
+        player_id = addPlayer(player_name)
     else:
-        player_id = existingPlayerNameDeconflict(player_name)
-        if isPlayerRegistered(tournament_id, player_id):
-            return player_name + " is already registered for this tournament."
+        #
+        # Lines commented out below would handle a more real-world solution, perhaps with messages to the front end
+        #
+        # player_id = existingPlayerNameDeconflict(player_name)
+        player_id = addPlayer(player_name)
+        # if isPlayerRegistered(tournament_id, player_id):
+        #     return player_name + " is already registered for this tournament."
     if player_id != None:
         addTournamentRegistrant(tournament_id, player_id)
     else:
@@ -249,30 +247,6 @@ def isPlayerRegistered(tournament_id, player_id):
         return False
     else:
         return True
-
-def newPlayerConfirmation(player_name):
-    """Abstracted layer, runs the logic of adding players. - Needed for testing, would be front end normally
-
-    Can be triggered independently; also used as part of registerPlayer logic.
-
-    Args:
-        player_name: the player's full name (need not be unique).
-    Returns:
-        player_id or None; None if no player_id was created; else player_id
-    """
-    answer_list = ['y','N','cancel']
-    add_player = ""
-    print "Type 'cancel' to escape.\n\n"
-    while add_player not in answer_list:
-        # This needs more work - add if new player, otherwise look up their player_id
-        add_player = raw_input("Player not found in list. Add '" + player_name + "'?' (y,N)?")
-
-    if add_player.lower() == 'cancel':
-        return None
-    elif add_player == 'y':
-        return addPlayer(player_name)
-    else:
-        return None
 
 def existingPlayerNameDeconflict(player_name):
     """Asks user if player is a returming player. Returns player_id.
@@ -438,9 +412,12 @@ def newRound(tournament_id):
         return
     if not isRoundNeeded:
         return
+    if getRegistrantCount(tournament_id) < 2:
+        return
     new_round_id = addNextRound(tournament_id)
     newMatchesForRound(tournament_id, new_round_id)
     newMatchAssignments(tournament_id, new_round_id)
+    return new_round_id
 
 def isLastRoundComplete(tournament_id):
     """Returns True/False based on if all previous matches are complete
@@ -616,7 +593,7 @@ def newMatchAssignments(tournament_id, round_id):
     match_list = getMatchList(tournament_id, round_id)
     for match in match_list:
         player1 = getUnassignedPlayer(tournament_id, round_id)
-        player2 = getUnmatchedPlayer(tournament_id, player1)
+        player2 = getUnmatchedPlayer(tournament_id, round_id, player1)
         if player2 == None:
             addMatchAssignments(match[0], player1, 'B','B')      # User gets a Bye
             return
@@ -655,9 +632,9 @@ def getUnassignedPlayer(tournament_id, round_id):
     results = cursor.fetchone()
     conn.close
 
-    return results
+    return results[0]
 
-def getUnmatchedPlayer(tournament_id, player_id):
+def getUnmatchedPlayer(tournament_id, round_id, player_id):
     """Returns top ranked, player not yet assigned AND that hasn't played player_id in this tournament
 
     Args:
@@ -674,18 +651,22 @@ def getUnmatchedPlayer(tournament_id, player_id):
         SELECT tpu.candidate_unmatched
         FROM tournament_player_unmatched tpu
         WHERE tpu.tournament_id = %s
+        AND tpu.round_id = %s
         AND tpu.player_id = %s
         ORDER BY tpu.candidate_score DESC
         , tpu.candidate_unmatched
         LIMIT 1
-    """,(tournament_id, player_id))
+    """,(tournament_id, round_id, player_id))
 
     results = cursor.fetchone()
     conn.close
 
+    if results != None:
+        results = results[0]
+
     return results
 
-def addMatchAssigments(match_id, player_id, match_role_id, match_result_id=None):
+def addMatchAssignments(match_id, player_id, match_role_id, match_result_id=None):
     """Adds match assignments to the match_assignments table
 
     Args:
@@ -699,7 +680,7 @@ def addMatchAssigments(match_id, player_id, match_role_id, match_result_id=None)
 
     cursor.execute(
     """
-        INSERT INTO match_assignments ma
+        INSERT INTO match_assignments
         (match_id, player_id, match_role_id, match_result_id)
         VALUES (%s, %s, %s, %s)
     """,(match_id, player_id, match_role_id, match_result_id))
@@ -754,7 +735,7 @@ def newMatchResults(match_id, winner, loser, draw=False):
         addMatchResults(match_id, winner, "D")
         addMatchResults(match_id, loser, "D")
 
-def addMatchResults(match_id, player_id, match_result_id):
+def updateMatchResults(match_id, player_id, match_result_id):
     """Writes the results to the match_assignments table
 
     Args:
@@ -762,15 +743,16 @@ def addMatchResults(match_id, player_id, match_result_id):
         player_id: player whose results are being written
         match_result_id: can be win, loss, bye or draw
     """
+
     conn = connect()
     cursor = conn.cursor()
 
     cursor.execute(
     """
-        UPDATE match_assignments ma
+        UPDATE match_assignments
         SET match_result_id = %s
-        WHERE ma.match_id = %s
-        AND ma.player_id = %s)
+        WHERE match_id = %s
+        AND player_id = %s
     """,(match_result_id, match_id, player_id))
 
     conn.commit()
@@ -778,38 +760,62 @@ def addMatchResults(match_id, player_id, match_result_id):
 
     return
 
-def deleteMatches():
-    """Remove all the match records from the database."""
+def deleteMatches(tournament_id):
+    """Remove all the match records from the tournament_id."""
 
-    # Normal DELETES would look like the commented area below
-    # conn = connect()
-    # cursor = conn.cursor()
+    conn = connect()
+    cursor = conn.cursor()
 
-    # cursor.execute(
-    #     """
-    #         DELETE FROM match_assignments CASCADE;
-    #     """)
+    cursor.execute(
+        """
+            DELETE FROM match_assignments 
+            WHERE match_id IN (SELECT match_id
+                                FROM tournament_round_match_list trml
+                                WHERE trml.tournament_id = %s)
+        """, (tournament_id,))
+    conn.commit()
 
-    # cursor.execute(
-    #     """
-    #         DELETE FROM matches CASCADE;
-    #     """)
+    cursor.execute(
+        """
+            DELETE FROM matches 
+            WHERE match_id IN (SELECT match_id
+                                FROM tournament_round_match_list trml
+                                WHERE trml.tournament_id = %s)
+            """, (tournament_id,))
+    conn.commit()
 
-    # conn.close
+    cursor.execute(
+        """
+            DELETE FROM rounds
+            WHERE round_id IN (SELECT round_id
+                                FROM tournament_round_match_list trml
+                                WHERE trml.tournament_id = %s)
+        """, (tournament_id,))
+    conn.commit()
 
-    addTournament()
+    conn.close
 
-def deletePlayers():
-    """Returns the number of players registered in current tournament - forced change to accomodate 'Above and beyond
-    
-    True Delete statement included in comments
+def deletePlayers(tournament_id):
+    """Deletes all players in tournament_id
 
     Args:
         tournament_id: allows a check to ensure the tournament has no players (recently created by 'deleteMatches()')"""
     
-    if countPlayers(tournament_id) > 0:
-        addTournament()
-    return
+    # deleteMatches must be done in order to protect integrity
+    # Players were entered into match_assignment table, so they must be removed
+    deleteMatches(tournament_id)
+
+    conn = connect()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+            DELETE FROM tournament_registrants
+            WHERE tournament_id = %s
+        """, (tournament_id,))
+    conn.commit()
+
+    conn.close
 
 def countPlayers(tournament_id):
     """Returns the number of players currently registered to the tournament.
@@ -869,11 +875,11 @@ def playerStandings(tournament_id):
             , ts.matches_played
             FROM tournament_score ts
             WHERE ts.tournament_id = %s
-            ORDER BY ts.player_wins DESC
+            ORDER BY ts.score DESC 
+            , ts.player_wins DESC
         """,(tournament_id,))
 
     results = cursor.fetchall()
-    results = int(results[0])
     conn.close
 
     return results
@@ -910,9 +916,10 @@ def reportMatch(tournament_id, winner, loser):
 
     match_id = cursor.fetchone()
     conn.close
-    match_id = int(match_id[0])
-
-    newMatchResults(match_id, winner, loser)
+    if match_id != None:
+        match_id = int(match_id[0])
+        updateMatchResults(match_id, winner, 'W')
+        updateMatchResults(match_id, loser, 'L')
 
 def swissPairings(tournament_id, round_id):
     """Returns a list of pairs of players for the next round of a match.
@@ -943,7 +950,7 @@ def swissPairings(tournament_id, round_id):
             FROM swiss_pairings sp
             WHERE sp.tournament_id = (%s)
             AND sp.round_id = (%s)
-        """,(winner, loser, tournament_id))
+        """,(tournament_id, round_id))
 
     swiss_pairings = cursor.fetchall()
     conn.close
