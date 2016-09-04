@@ -177,16 +177,17 @@ CREATE OR REPLACE VIEW tournament_round_players_assigned AS
 	WHERE trml.match_id = ma.match_id
 	;
 
+-- Create a vie to list player in tournament, side-stepping a subSELECT
 CREATE OR REPLACE VIEW tournament_round_players AS
 	SELECT trml.tournament_id
 	, trml.round_id
 	, tr.player_id
 	FROM tournament_round_match_list trml
 	, tournament_registrants tr
+	WHERE trml.tournament_id = tr.tournament_id
 	GROUP BY trml.tournament_id
 	, trml.round_id
 	, tr.player_id
-	WHERE trml.tournament_id = tr.tournament_id
 	;
 
 -- Create a view, returns all players in the tournament, that have not been assigned to a round/match
